@@ -50,45 +50,48 @@ with st.sidebar:
     st.header("⚙️ 行程設定")
     days = st.slider("預計旅遊天數", 1, 7, 3)
     
-    # 這裡的選項會去對應 Add 欄位裡的文字
     city_options = ["宜蘭縣", "南投縣", "臺北市", "臺中市", "高雄市", "花蓮縣", "桃園市"]
     city = st.selectbox("選擇目的縣市", city_options)
     
     transport_mode = st.radio("交通方式", ["driving", "transit", "walking"], 
                               format_func=lambda x: {"driving": "自行開車", "transit": "大眾運輸", "walking": "步行"}[x])
     
-    stay_addr = st.text_input("輸入當晚住宿/起點地址", "宜蘭火車站")
+    # 這裡就是你的「起點」設定
+    start_point = st.text_input("📍 設定每日出發起點 (例如：宜蘭火車站或飯店名稱)", "宜蘭火車站")
 
 # --- 核心邏輯 ---
 if st.button("🚀 開始自動生成優化行程"):
     if df is not None:
-        # 【重要修正】根據你的截圖，欄位名稱應該是 'Add' 而非 '縣市'
-        # 我們檢查 'Add' 欄位是否包含使用者選擇的縣市字串
         if 'Add' in df.columns:
             filtered_df = df[df['Add'].str.contains(city, na=False)]
             
             if filtered_df.empty:
-                st.warning(f"目前資料庫的 'Add' 欄位中找不到包含「{city}」的景點。")
+                st.warning(f"目前資料庫中找不到包含「{city}」的景點。")
             else:
                 st.header(f"📍 為您規劃的 {city} {days} 日遊")
-                st.caption(f"🏠 每日起點/終點：{stay_addr}")
+                st.info(f"🚩 每日出發起點：{start_point}")
 
                 for day in range(1, days + 1):
                     with st.expander(f"📅 第 {day} 天行程規劃", expanded=True):
-                        # 從 'Name' 欄位抓景點名稱
                         sample_count = min(len(filtered_df), 3)
                         daily_spots = filtered_df.sample(sample_count)['Name'].tolist()
                         
-                        current_origin = stay_addr
+                        # 每一天的起點
+                        current_origin = start_point
                         
                         for i, spot in enumerate(daily_spots):
                             dist, travel_time = get_google_travel_info(current_origin, spot, transport_mode)
-                            st.markdown(f"#### 第 {i+1} 站：{spot}")
-                            st.write(f"⏱️ **交通預估**：約 **{dist}** (預估耗時 **{travel_time}**)")
+                            
+                            # 顯示目前位置與目標站點
+                            st.markdown(f"**第 {i+1} 站：{spot}**")
+                            st.caption(f"🏁 從 **{current_origin}** 出發 ➔ 移動約 **{dist}** (預估耗時 **{travel_time}**)")
                             st.markdown("---")
+                            
+                            # 更新下一站的起點
                             current_origin = spot
                         
-                        dist_back, time_back = get_google_travel_info(current_origin, stay_addr, transport_mode)
-                        st.success(f"🌙 行程結束：返回住宿點 **{stay_addr}** (約需 {time_back})")
+                        # 回程顯示
+                        dist_back, time_back = get_google_travel_info(current_origin, start_point, transport_mode)
+                        st.success(f"🌙 結束行程：返回起點 **{start_point}** (約需 {time_back})")
         else:
-            st.error(f"❌ 找不到 'Add' 欄位，請檢查 CSV。目前欄位：{df.columns.tolist()}")
+            st.error("CSV 格式不符，找不到 'Add' 欄位。")
