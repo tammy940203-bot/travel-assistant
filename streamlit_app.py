@@ -9,15 +9,12 @@ except Exception:
     st.error("❌ 找不到 API 金鑰！請在 Streamlit Secrets 設定 MAPS_API_KEY")
     st.stop()
 
-# 2. 定義 Google Maps 請求函式 (回傳秒數與文字描述)
+# 2. 定義 Google Maps 請求函式
 def get_travel_data(origin, destination, mode):
     url = "https://maps.googleapis.com/maps/api/distancematrix/json"
     params = {
-        "origins": origin,
-        "destinations": destination,
-        "mode": mode,
-        "language": "zh-TW",
-        "key": API_KEY
+        "origins": origin, "destinations": destination,
+        "mode": mode, "language": "zh-TW", "key": API_KEY
     }
     try:
         res = requests.get(url, params=params).json()
@@ -27,7 +24,7 @@ def get_travel_data(origin, destination, mode):
                 return {
                     "dist_txt": element['distance']['text'],
                     "dur_txt": element['duration']['text'],
-                    "dur_sec": element['duration']['value']  # 用秒數來做計算排序
+                    "dur_sec": element['duration']['value']
                 }
         return None
     except:
@@ -45,8 +42,8 @@ def load_data():
 df = load_data()
 
 # --- UI 介面 ---
-st.set_page_config(page_title="智能旅遊助手 V4.0", layout="wide")
-st.title("全台智能旅遊助手 V4.0 (順路優化版) 🌍")
+st.set_page_config(page_title="智能旅遊助手 V4.2", layout="wide")
+st.title("全台智能旅遊助手 V4.2 (景點多樣化版) 🌍")
 
 with st.sidebar:
     st.header("⚙️ 行程設定")
@@ -56,70 +53,68 @@ with st.sidebar:
         "宜蘭縣", "新竹縣", "苗栗縣", "彰化縣", "南投縣", "雲林縣", 
         "嘉義縣", "屏東縣", "花蓮縣", "臺東縣"
     ])
-    transport_mode = st.radio("交通方式", ["driving", "transit", "walking"], 
-                              format_func=lambda x: {"driving": "自行開車", "transit": "大眾運輸", "walking": "步行"}[x])
+    transport_mode = st.radio("交通方式", ["driving", "transit", "walking"], index=0)
     
     start_point = st.text_input("🚩 設定第一天出發點", "臺北車站")
-    hotel_addr = st.text_input("🏨 設定每日住宿點", "台北某某飯店")
+    hotel_addr = st.text_input("🏨 設定每日住宿點", "台北市飯店")
 
-# --- 核心優化邏輯 ---
-if st.button("🚀 生成順路且不塞車行程"):
+# --- 核心邏輯 ---
+if st.button("🚀 生成順路且「像旅遊」的行程"):
     if df is not None:
-        # 篩選縣市景點
+        # 【資料清洗】排除不適合旅遊的關鍵字
+        exclude_list = ['書局', '書店', '圖書館', '補習班', '藥局', '診所']
+        pattern = '|'.join(exclude_list)
+        
+        # 篩選縣市並過濾掉黑名單
         filtered_df = df[df['Add'].str.contains(city, na=False)].copy()
+        filtered_df = filtered_df[~filtered_df['Name'].str.contains(pattern, na=False)]
         
         if filtered_df.empty:
-            st.warning("找不到該縣市的景點，請檢查資料庫。")
+            st.warning("過濾後找不到適合的景點。")
         else:
-            # 每日限制：總車程不超過 3 小時 (10800 秒)
-            MAX_DUR_SEC = 3 * 3600 
+            MAX_DUR_SEC = 3 * 3600 # 每日交通上限 3 小時
             
             for day in range(1, days + 1):
                 with st.expander(f"📅 第 {day} 天行程規劃", expanded=True):
                     current_loc = start_point if day == 1 else hotel_addr
                     daily_total_sec = 0
-                    daily_spots = []
-
-                    # 每一天嘗試找 3 個景點
-                    for _ in range(3):
+                    
+                    for i in range(3): # 每天 3 個點
                         if filtered_df.empty: break
                         
-                        # 隨機挑選 8 個候選點計算距離 (避免 API 呼叫過多)
-                        candidates = filtered_df.sample(min(8, len(filtered_df)))
+                        # 隨機挑 10 個點，從中選距離「適中且最近」的，增加多樣性
+                        candidates = filtered_df.sample(min(10, len(filtered_df)))
                         best_spot = None
-                        min_dist_sec = float('inf')
+                        min_dur = float('inf')
 
                         for idx, row in candidates.iterrows():
-                            # 加上縣市名搜尋更精準
-                            target = f"{city}{row['Name']}"
-                            data = get_travel_data(current_loc, target, transport_mode)
-                            
-                            if data:
-                                # 檢查：如果加入這站會不會讓「當天總交通時間」爆表
-                                if daily_total_sec + data['dur_sec'] <= MAX_DUR_SEC:
-                                    if data['dur_sec'] < min_dist_sec:
-                                        min_dist_sec = data['dur_sec']
-                                        best_spot = {"name": row['Name'], "data": data, "idx": idx}
+                            data = get_travel_data(current_loc, f"{city}{row['Name']}", transport_mode)
+                            if data and (daily_total_sec + data['dur_sec'] <= MAX_DUR_SEC):
+                                if data['dur_sec'] < min_dur:
+                                    min_dur = data['dur_sec']
+                                    best_spot = row.to_dict()
+                                    best_spot['travel'] = data
+                                    best_spot['idx'] = idx
 
                         if best_spot:
-                            daily_spots.append(best_spot)
-                            daily_total_sec += best_spot['data']['dur_sec']
-                            current_loc = f"{city}{best_spot['name']}"
-                            # 移除已選點
+                            st.markdown(f"### 第 {i+1} 站：{best_spot['Name']}")
+                            
+                            # 嘗試顯示圖片 (如果 CSV 裡有 Picture1 欄位)
+                            if pd.notna(best_spot.get('Picture1')):
+                                st.image(best_spot['Picture1'], use_container_width=True)
+                            
+                            st.write(f"📖 **景點特色**：{best_spot.get('Description', '暫無描述')[:100]}...")
+                            st.caption(f"🚗 交通：從前一站移動 {best_spot['travel']['dist_txt']} (約 {best_spot['travel']['dur_txt']})")
+                            st.markdown("---")
+                            
+                            daily_total_sec += best_spot['travel']['dur_sec']
+                            current_loc = f"{city}{best_spot['Name']}"
                             filtered_df = filtered_df.drop(best_spot['idx'])
 
-                    # 顯示行程
-                    if not daily_spots:
-                        st.write("這附近找不到更近的點了，請調整起點或交通工具。")
-                    else:
-                        for i, s in enumerate(daily_spots):
-                            st.markdown(f"**第 {i+1} 站：{s['name']}**")
-                            st.caption(f"⏱️ 移動距離：{s['data']['dist_txt']} (約 {s['data']['dur_txt']})")
-                        
-                        # 最後回飯店
-                        back_home = get_travel_data(current_loc, hotel_addr, transport_mode)
-                        if back_home:
-                            daily_total_sec += back_home['dur_sec']
-                            st.success(f"🌙 今日總交通耗時：{daily_total_sec // 60} 分鐘 (限制 180 分鐘內)")
+                    # 算回程
+                    back = get_travel_data(current_loc, hotel_addr, transport_mode)
+                    if back:
+                        daily_total_sec += back['dur_sec']
+                        st.success(f"🌙 今日總交通耗時：{daily_total_sec // 60} 分鐘 (符合 180 分鐘內限制)")
     else:
-        st.error("找不到景點資料庫 CSV 檔案。")
+        st.error("找不到資料庫 CSV。")
