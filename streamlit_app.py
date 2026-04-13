@@ -3,14 +3,14 @@ import pandas as pd
 import requests
 import random
 
-# 1. 從 Secrets 安全讀取金鑰
+# 1. 從 Secrets 安全讀取金鑰 (請確保標籤為 MAPS_API_KEY)
 try:
     API_KEY = st.secrets["MAPS_API_KEY"]
 except Exception:
     st.error("❌ 找不到 API 金鑰！請在 Streamlit Cloud 的 Secrets 中設定 MAPS_API_KEY")
     st.stop()
 
-# 2. 定義 Google Maps 距離矩陣函式
+# 2. 定義 Google Maps 距離矩陣函式 (優化錯誤處理)
 def get_google_travel_info(origin, destination, mode):
     url = "https://maps.googleapis.com/maps/api/distancematrix/json"
     params = {
@@ -24,11 +24,16 @@ def get_google_travel_info(origin, destination, mode):
         res = requests.get(url, params=params).json()
         if res['status'] == 'OK':
             element = res['rows'][0]['elements'][0]
-            if element['status'] == 'OK':
+            status = element.get('status')
+            if status == 'OK':
                 return element['distance']['text'], element['duration']['text']
+            elif status == 'ZERO_RESULTS':
+                return "路徑不通", "無大眾工具或路網"
+            elif status == 'NOT_FOUND':
+                return "地點不明", "找不到此地"
         return "未知距離", "無法計算"
-    except:
-        return "連線失敗", "請檢查網路"
+    except Exception:
+        return "連線失敗", "網路錯誤"
 
 # --- 載入資料庫 ---
 @st.cache_data
@@ -56,42 +61,9 @@ with st.sidebar:
     transport_mode = st.radio("交通方式", ["driving", "transit", "walking"], 
                               format_func=lambda x: {"driving": "自行開車", "transit": "大眾運輸", "walking": "步行"}[x])
     
-    # 新增：起點與住宿點分開
-    start_point = st.text_input("🚩 設定第一天出發起點", "宜蘭火車站")
-    hotel_addr = st.text_input("🏨 設定當晚住宿地點", "宜蘭某某飯店")
+    # 修正：起點與住宿點完全分開的欄位
+    start_point = st.text_input("🚩 設定第一天出發起點 (例如：宜蘭火車站)", "宜蘭火車站")
+    hotel_addr = st.text_input("🏨 設定每日住宿/終點 (例如：伯斯飯店)", "伯斯飯店")
 
 # --- 核心邏輯 ---
-if st.button("🚀 開始自動生成優化行程"):
-    if df is not None:
-        if 'Add' in df.columns:
-            filtered_df = df[df['Add'].str.contains(city, na=False)]
-            
-            if filtered_df.empty:
-                st.warning(f"目前資料庫中找不到包含「{city}」的景點。")
-            else:
-                st.header(f"📍 為您規劃的 {city} {days} 日遊")
-                st.info(f"🚩 出發地：{start_point} | 🏨 住宿點：{hotel_addr}")
-
-                for day in range(1, days + 1):
-                    with st.expander(f"📅 第 {day} 天行程規劃", expanded=True):
-                        sample_count = min(len(filtered_df), 3)
-                        daily_spots = filtered_df.sample(sample_count)['Name'].tolist()
-                        
-                        # 第一天的第一站從「起點」出發，之後每天的第一站從「住宿點」出發
-                        current_origin = start_point if day == 1 else hotel_addr
-                        
-                        for i, spot in enumerate(daily_spots):
-                            dist, travel_time = get_google_travel_info(current_origin, spot, transport_mode)
-                            
-                            st.markdown(f"#### 第 {i+1} 站：{spot}")
-                            st.caption(f"🏁 從 **{current_origin}** 出發 ➔ 移動約 **{dist}** (預估耗時 **{travel_time}**)")
-                            st.markdown("---")
-                            
-                            # 更新下一站的起點
-                            current_origin = spot
-                        
-                        # 每天行程結束，回「住宿點」
-                        dist_back, time_back = get_google_travel_info(current_origin, hotel_addr, transport_mode)
-                        st.success(f"🌙 結束行程：返回住宿點 **{hotel_addr}** (約需 {time_back})")
-        else:
-            st.error("CSV 格式不符，找不到 'Add' 欄位。")
+if st.
