@@ -42,8 +42,8 @@ def load_data():
 df = load_data()
 
 # --- UI 介面 ---
-st.set_page_config(page_title="智能旅遊助手 V4.2", layout="wide")
-st.title("全台智能旅遊助手 V4.2 (景點多樣化版) 🌍")
+st.set_page_config(page_title="智能旅遊助手", layout="wide")
+st.title("全台智能旅遊助手 V4.3 (穩定版) 🌍")
 
 with st.sidebar:
     st.header("⚙️ 行程設定")
@@ -59,13 +59,12 @@ with st.sidebar:
     hotel_addr = st.text_input("🏨 設定每日住宿點", "台北市飯店")
 
 # --- 核心邏輯 ---
-if st.button("🚀 生成順路且「像旅遊」的行程"):
+if st.button("🚀 生成順路且有趣的行程"):
     if df is not None:
-        # 【資料清洗】排除不適合旅遊的關鍵字
-        exclude_list = ['書局', '書店', '圖書館', '補習班', '藥局', '診所']
+        # 【黑名單過濾】徹底排除非觀光景點
+        exclude_list = ['書局', '書店', '圖書館', '補習班', '藥局', '診所', '服務處', '辦事處']
         pattern = '|'.join(exclude_list)
         
-        # 篩選縣市並過濾掉黑名單
         filtered_df = df[df['Add'].str.contains(city, na=False)].copy()
         filtered_df = filtered_df[~filtered_df['Name'].str.contains(pattern, na=False)]
         
@@ -79,11 +78,11 @@ if st.button("🚀 生成順路且「像旅遊」的行程"):
                     current_loc = start_point if day == 1 else hotel_addr
                     daily_total_sec = 0
                     
-                    for i in range(3): # 每天 3 個點
+                    for i in range(3): 
                         if filtered_df.empty: break
                         
-                        # 隨機挑 10 個點，從中選距離「適中且最近」的，增加多樣性
-                        candidates = filtered_df.sample(min(10, len(filtered_df)))
+                        # 從 15 個候選點選最近的，確保順路又有多樣性
+                        candidates = filtered_df.sample(min(15, len(filtered_df)))
                         best_spot = None
                         min_dur = float('inf')
 
@@ -99,22 +98,26 @@ if st.button("🚀 生成順路且「像旅遊」的行程"):
                         if best_spot:
                             st.markdown(f"### 第 {i+1} 站：{best_spot['Name']}")
                             
-                            # 嘗試顯示圖片 (如果 CSV 裡有 Picture1 欄位)
-                            if pd.notna(best_spot.get('Picture1')):
-                                st.image(best_spot['Picture1'], use_container_width=True)
+                            # 圖片防呆
+                            pic = best_spot.get('Picture1')
+                            if pd.notna(pic) and str(pic).startswith('http'):
+                                st.image(pic, use_container_width=True)
                             
-                            st.write(f"📖 **景點特色**：{best_spot.get('Description', '暫無描述')[:100]}...")
-                            st.caption(f"🚗 交通：從前一站移動 {best_spot['travel']['dist_txt']} (約 {best_spot['travel']['dur_txt']})")
+                            # 【關鍵修復】先轉字串再切片，防止 NaN 導致閃退
+                            desc = str(best_spot.get('Description', '暫無描述資料'))
+                            st.write(f"📖 **景點特色**：{desc[:100]}...")
+                            
+                            st.caption(f"🚗 交通：移動 {best_spot['travel']['dist_txt']} (約 {best_spot['travel']['dur_txt']})")
                             st.markdown("---")
                             
                             daily_total_sec += best_spot['travel']['dur_sec']
                             current_loc = f"{city}{best_spot['Name']}"
                             filtered_df = filtered_df.drop(best_spot['idx'])
 
-                    # 算回程
+                    # 回程計算
                     back = get_travel_data(current_loc, hotel_addr, transport_mode)
                     if back:
                         daily_total_sec += back['dur_sec']
-                        st.success(f"🌙 今日總交通耗時：{daily_total_sec // 60} 分鐘 (符合 180 分鐘內限制)")
+                        st.success(f"🌙 今日交通總計：{daily_total_sec // 60} 分鐘 (限額 180 分鐘)")
     else:
         st.error("找不到資料庫 CSV。")
