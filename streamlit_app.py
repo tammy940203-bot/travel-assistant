@@ -56,8 +56,9 @@ with st.sidebar:
     transport_mode = st.radio("交通方式", ["driving", "transit", "walking"], 
                               format_func=lambda x: {"driving": "自行開車", "transit": "大眾運輸", "walking": "步行"}[x])
     
-    # 這裡就是你的「起點」設定
-    start_point = st.text_input("📍 設定每日出發起點 (例如：宜蘭火車站或飯店名稱)", "宜蘭火車站")
+    # 新增：起點與住宿點分開
+    start_point = st.text_input("🚩 設定第一天出發起點", "宜蘭火車站")
+    hotel_addr = st.text_input("🏨 設定當晚住宿地點", "宜蘭某某飯店")
 
 # --- 核心邏輯 ---
 if st.button("🚀 開始自動生成優化行程"):
@@ -69,29 +70,28 @@ if st.button("🚀 開始自動生成優化行程"):
                 st.warning(f"目前資料庫中找不到包含「{city}」的景點。")
             else:
                 st.header(f"📍 為您規劃的 {city} {days} 日遊")
-                st.info(f"🚩 每日出發起點：{start_point}")
+                st.info(f"🚩 出發地：{start_point} | 🏨 住宿點：{hotel_addr}")
 
                 for day in range(1, days + 1):
                     with st.expander(f"📅 第 {day} 天行程規劃", expanded=True):
                         sample_count = min(len(filtered_df), 3)
                         daily_spots = filtered_df.sample(sample_count)['Name'].tolist()
                         
-                        # 每一天的起點
-                        current_origin = start_point
+                        # 第一天的第一站從「起點」出發，之後每天的第一站從「住宿點」出發
+                        current_origin = start_point if day == 1 else hotel_addr
                         
                         for i, spot in enumerate(daily_spots):
                             dist, travel_time = get_google_travel_info(current_origin, spot, transport_mode)
                             
-                            # 顯示目前位置與目標站點
-                            st.markdown(f"**第 {i+1} 站：{spot}**")
+                            st.markdown(f"#### 第 {i+1} 站：{spot}")
                             st.caption(f"🏁 從 **{current_origin}** 出發 ➔ 移動約 **{dist}** (預估耗時 **{travel_time}**)")
                             st.markdown("---")
                             
                             # 更新下一站的起點
                             current_origin = spot
                         
-                        # 回程顯示
-                        dist_back, time_back = get_google_travel_info(current_origin, start_point, transport_mode)
-                        st.success(f"🌙 結束行程：返回起點 **{start_point}** (約需 {time_back})")
+                        # 每天行程結束，回「住宿點」
+                        dist_back, time_back = get_google_travel_info(current_origin, hotel_addr, transport_mode)
+                        st.success(f"🌙 結束行程：返回住宿點 **{hotel_addr}** (約需 {time_back})")
         else:
             st.error("CSV 格式不符，找不到 'Add' 欄位。")
