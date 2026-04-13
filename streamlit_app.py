@@ -55,7 +55,9 @@ if st.button("開始自動排程"):
     for day in range(1, days + 1):
         with st.expander(f"📅 第 {day} 天行程規劃", expanded=True):
             # 這裡示範每天挑選 3 個點，你可以改為從 df 篩選
-            daily_spots = [f"景點 A-{day}", f"景點 B-{day}", f"景點 C-{day}"] 
+            # 找到這行：daily_spots = [f"景點 A-{day}", f"景點 B-{day}", f"景點 C-{day}"] 
+            # 改回你原本的抽樣邏輯，例如：
+            daily_spots = df[df['縣市'] == city].sample(3)['景點名稱'].tolist()
             
             current_origin = stay_addr # 每天的第一站從住宿點出發
             
