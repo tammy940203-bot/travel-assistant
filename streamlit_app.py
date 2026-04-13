@@ -4,7 +4,7 @@ import requests
 import random
 
 # 1. 從 Secrets 安全讀取金鑰
-API_KEY = st.secrets["MAPS_API_KEY"]
+API_KEY = st.secrets["AIzaSyB8GQbeMdQyqWAD7BwBMbkLRYvuRwow--M"]
 
 # 2. 定義 Google Maps 距離矩陣函式 (解決交通方式太爛的問題)
 def get_google_travel_info(origin, destination, mode):
